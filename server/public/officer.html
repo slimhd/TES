@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TES - Officer Dashboard</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .driver-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+        .driver-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .driver-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .driver-plate {
+            font-size: 20px;
+            font-weight: bold;
+            color: #00d9ff;
+            background: rgba(0, 217, 255, 0.1);
+            padding: 5px 12px;
+            border-radius: 6px;
+        }
+        .driver-name {
+            color: #ccc;
+            font-size: 16px;
+        }
+        .total-points {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .total-points.low { color: #2ecc71; }
+        .total-points.medium { color: #f39c12; }
+        .total-points.high { color: #e74c3c; }
+        .total-points.critical { color: #8e44ad; }
+        .violations-list {
+            margin-top: 10px;
+        }
+        .violation-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+        .violation-details {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .no-violations {
+            color: #666;
+            font-style: italic;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚔 Officer Dashboard</h1>
+            <button id="logoutBtn" class="btn-danger">Logout</button>
+        </div>
+
+        <div id="message" class="message"></div>
+
+        <!-- Register Driver -->
+        <div class="card">
+            <h2>Register New Driver</h2>
+            <form id="driverForm" class="inline-form">
+                <div class="form-group">
+                    <label for="plate">License Plate</label>
+                    <input type="text" id="plate" placeholder="ABC123" required>
+                </div>
+                <div class="form-group">
+                    <label for="driverName">Driver Name</label>
+                    <input type="text" id="driverName" placeholder="John Doe" required>
+                </div>
+                <button type="submit" class="btn-primary">Register</button>
+            </form>
+        </div>
+
+        <!-- Drivers with Violations -->
+        <div class="card">
+            <h2>Registered Drivers & Violations</h2>
+            <button id="refreshData" class="btn-secondary btn-small" style="margin-bottom: 15px;">Refresh</button>
+            <div id="driversContainer"></div>
+        </div>
+
+        <!-- Decrypted Data Display -->
+        <div id="decryptedData"></div>
+    </div>
+
+    <script>
+        const message = document.getElementById('message');
+        let driversData = [];
+        let violationsData = [];
+
+        function showMessage(text, isError = false) {
+            message.className = isError ? 'message error' : 'message success';
+            message.textContent = text;
+            setTimeout(() => { message.className = 'message'; }, 3000);
+        }
+
+        function getBadgeClass(points) {
+            if (points >= 50) return 'badge-critical';
+            if (points >= 20) return 'badge-danger';
+            return 'badge-warning';
+        }
+
+        function getTotalPointsClass(total) {
+            if (total === 0) return 'low';
+            if (total < 30) return 'medium';
+            if (total < 70) return 'high';
+            return 'critical';
+        }
+
+        async function loadData() {
+            try {
+                const [driversRes, violationsRes] = await Promise.all([
+                    fetch('/api/drivers'),
+                    fetch('/api/violations')
+                ]);
+                const driversJson = await driversRes.json();
+                const violationsJson = await violationsRes.json();
+                
+                driversData = driversJson.drivers || [];
+                violationsData = violationsJson.violations || [];
+                
+                renderDrivers();
+            } catch (err) {
+                showMessage('Failed to load data', true);
+            }
+        }
+
+        function renderDrivers() {
+            const container = document.getElementById('driversContainer');
+            
+            if (driversData.length === 0) {
+                container.innerHTML = '<p class="no-violations">No drivers registered yet.</p>';
+                return;
+            }
+
+            container.innerHTML = driversData.map(driver => {
+                const driverViolations = violationsData.filter(v => v.plate === driver.plate);
+                const totalPoints = driverViolations.reduce((sum, v) => sum + v.points, 0);
+                
+                let violationsHtml = '';
+                if (driverViolations.length === 0) {
+                    violationsHtml = '<p class="no-violations">No violations recorded</p>';
+                } else {
+                    violationsHtml = driverViolations.map(v => `
+                        <div class="violation-row">
+                            <div class="violation-details">
+                                <span>${v.speed} km/h</span>
+                                <span class="badge ${getBadgeClass(v.points)}">${v.points} pts</span>
+                                <span style="color: #888; font-size: 13px;">${v.created_at}</span>
+                            </div>
+                            <button class="btn-secondary btn-small" onclick="decryptRecord('${v.stored_ciphertext_b64}', '${v.iv_b64}')">
+                                Decrypt
+                            </button>
+                        </div>
+                    `).join('');
+                }
+                
+                return `
+                    <div class="driver-card">
+                        <div class="driver-header">
+                            <div class="driver-info">
+                                <span class="driver-plate">${driver.plate}</span>
+                                <span class="driver-name">${driver.name}</span>
+                            </div>
+                            <span class="total-points ${getTotalPointsClass(totalPoints)}">
+                                Total: ${totalPoints} pts
+                            </span>
+                        </div>
+                        <div class="violations-list">
+                            ${violationsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function decryptRecord(ciphertext, iv) {
+            try {
+                const res = await fetch('/api/violations/decrypt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ciphertext_b64: ciphertext, iv_b64: iv })
+                });
+                const data = await res.json();
+                const container = document.getElementById('decryptedData');
+                if (data.plaintext) {
+                    container.innerHTML = `
+                        <div class="card">
+                            <h3 style="color: #00d9ff; margin-bottom: 15px;">Decrypted Record:</h3>
+                            <pre>${JSON.stringify(data.plaintext, null, 2)}</pre>
+                        </div>`;
+                } else {
+                    container.innerHTML = `<div class="card"><pre style="color: #ff6b6b;">Decryption failed</pre></div>`;
+                }
+            } catch (err) {
+                showMessage('Decryption failed', true);
+            }
+        }
+
+        // Register driver
+        document.getElementById('driverForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const plate = document.getElementById('plate').value;
+            const name = document.getElementById('driverName').value;
+
+            try {
+                const res = await fetch('/api/drivers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plate, name })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showMessage('Driver registered successfully!');
+                    document.getElementById('plate').value = '';
+                    document.getElementById('driverName').value = '';
+                    loadData();
+                } else {
+                    showMessage(data.error || 'Failed to register driver', true);
+                }
+            } catch (err) {
+                showMessage('Connection error', true);
+            }
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login';
+        });
+
+        // Refresh data
+        document.getElementById('refreshData').addEventListener('click', loadData);
+
+        // Initial load
+        loadData();
+    </script>
+</body>
+</html>

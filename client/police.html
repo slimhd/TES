@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TES - Police Client</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%);
+            min-height: 100vh;
+            color: #e4e4e4;
+            padding: 40px 20px;
+        }
+        .container { max-width: 500px; margin: 0 auto; }
+        h1 { text-align: center; color: #ff6b6b; margin-bottom: 30px; }
+        .card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        h2 { color: #00d9ff; margin-bottom: 20px; font-size: 18px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #888; font-size: 14px; }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            background: rgba(0,0,0,0.3);
+            color: #fff;
+            font-size: 16px;
+        }
+        input:focus { outline: none; border-color: #00d9ff; }
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .btn-primary { background: linear-gradient(135deg, #00d9ff, #0066ff); color: #fff; }
+        .btn-danger { background: linear-gradient(135deg, #ff6b6b, #c0392b); color: #fff; }
+        .btn-logout { background: rgba(255,255,255,0.1); color: #aaa; border: 1px solid rgba(255,255,255,0.2); }
+        .message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .message.error { display: block; background: rgba(255,107,107,0.2); border: 1px solid #ff6b6b; color: #ff6b6b; }
+        .message.success { display: block; background: rgba(0,217,255,0.2); border: 1px solid #00d9ff; color: #00d9ff; }
+        .status {
+            text-align: center;
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .status.connected { border: 1px solid #2ecc71; color: #2ecc71; }
+        .status.disconnected { border: 1px solid #e74c3c; color: #e74c3c; }
+        #loginSection, #violationSection { display: none; }
+        .logo { text-align: center; font-size: 50px; margin-bottom: 10px; }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🚓</div>
+        <h1>Police Client</h1>
+        
+        <div id="status" class="status disconnected">Not connected</div>
+        <div id="message" class="message"></div>
+        
+        <!-- Login Section -->
+        <div id="loginSection" class="card">
+            <h2>Login to Server</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" class="btn-primary">Login & Exchange Keys</button>
+            </form>
+        </div>
+        
+        <!-- Violation Section -->
+        <div id="violationSection" class="card">
+            <h2>Report Violation</h2>
+            <form id="violationForm">
+                <div class="form-group">
+                    <label>License Plate</label>
+                    <input type="text" id="plate" placeholder="ABC123" required>
+                </div>
+                <div class="form-group">
+                    <label>Speed (km/h)</label>
+                    <input type="number" id="speed" placeholder="85" min="1" required>
+                </div>
+                <button type="submit" class="btn-danger">Send Encrypted Violation</button>
+            </form>
+            <div id="result" class="result" style="display:none;"></div>
+            <button id="logoutBtn" class="btn-logout" style="margin-top: 20px;">Logout</button>
+        </div>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const messageEl = document.getElementById('message');
+        const loginSection = document.getElementById('loginSection');
+        const violationSection = document.getElementById('violationSection');
+
+        function showMessage(text, isError = false) {
+            messageEl.className = isError ? 'message error' : 'message success';
+            messageEl.textContent = text;
+            setTimeout(() => { messageEl.className = 'message'; }, 4000);
+        }
+
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                if (data.hasSessionKey) {
+                    statusEl.className = 'status connected';
+                    statusEl.textContent = `Connected | Key ID: ${data.serverKeyId}`;
+                    loginSection.style.display = 'none';
+                    violationSection.style.display = 'block';
+                } else {
+                    statusEl.className = 'status disconnected';
+                    statusEl.textContent = 'Not connected - Please login';
+                    loginSection.style.display = 'block';
+                    violationSection.style.display = 'none';
+                }
+            } catch (err) {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = 'Error checking status';
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showMessage('Login successful! Session key exchanged.');
+                    checkStatus();
+                } else {
+                    showMessage(data.error || 'Login failed', true);
+                }
+            } catch (err) {
+                showMessage('Connection error', true);
+            }
+        });
+
+        document.getElementById('violationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const plate = document.getElementById('plate').value;
+            const speed = parseInt(document.getElementById('speed').value);
+            const resultEl = document.getElementById('result');
+
+            if (speed < 50) {
+                showMessage('Speed below 50 km/h - Violation not sent', true);
+                resultEl.style.display = 'none';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plate, speed })
+                });
+                const data = await res.json();
+                resultEl.style.display = 'block';
+                if (data.success) {
+                    showMessage('Violation sent successfully!');
+                    resultEl.innerHTML = `<strong>Server Response:</strong><br>
+                        Plate: ${data.data.plate}<br>
+                        Speed: ${data.data.speed} km/h<br>
+                        Points: ${data.data.points}`;
+                    document.getElementById('plate').value = '';
+                    document.getElementById('speed').value = '';
+                } else {
+                    showMessage(data.error || 'Failed to send', true);
+                    resultEl.innerHTML = `Error: ${data.error}`;
+                }
+            } catch (err) {
+                showMessage('Connection error', true);
+            }
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                showMessage('Logged out successfully');
+                checkStatus();
+            } catch (err) {
+                showMessage('Logout failed', true);
+            }
+        });
+
+        // Initial status check
+        checkStatus();
+    </script>
+</body>
+</html>
+

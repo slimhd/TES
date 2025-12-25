@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TES - Login</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="card">
+            <div class="logo">🚔</div>
+            <h1>Traffic Enforcement System</h1>
+            <div id="message" class="message"></div>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn-primary" style="width: 100%;">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const message = document.getElementById('message');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            message.className = 'message';
+            message.textContent = '';
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    if (data.role === 'officer') {
+                        window.location.href = '/officer';
+                    } else {
+                        message.className = 'message success';
+                        message.textContent = 'Login successful! Use the Police Client application.';
+                    }
+                } else {
+                    message.className = 'message error';
+                    message.textContent = data.error || 'Login failed';
+                }
+            } catch (err) {
+                message.className = 'message error';
+                message.textContent = 'Connection error';
+            }
+        });
+    </script>
+</body>
+</html>
+
