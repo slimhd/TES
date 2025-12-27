@@ -171,7 +171,7 @@
                                 <span class="badge ${getBadgeClass(v.points)}">${v.points} pts</span>
                                 <span style="color: #888; font-size: 13px;">${v.created_at}</span>
                             </div>
-                            <button class="btn-secondary btn-small" onclick="decryptRecord('${v.stored_ciphertext_b64}', '${v.iv_b64}')">
+                            <button class="btn-secondary btn-small decrypt-btn" data-id="${v.id}">
                                 Decrypt
                             </button>
                         </div>
@@ -197,28 +197,46 @@
             }).join('');
         }
 
-        async function decryptRecord(ciphertext, iv) {
+        async function decryptRecord(violationId) {
+            // Find violation by ID
+            const violation = violationsData.find(v => v.id === violationId);
+            if (!violation) {
+                showMessage('Violation not found', true);
+                return;
+            }
+
             try {
                 const res = await fetch('/api/violations/decrypt', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ciphertext_b64: ciphertext, iv_b64: iv })
+                    body: JSON.stringify({ 
+                        ciphertext_b64: violation.stored_ciphertext_b64, 
+                        iv_b64: violation.iv_b64 
+                    })
                 });
                 const data = await res.json();
                 const container = document.getElementById('decryptedData');
                 if (data.plaintext) {
                     container.innerHTML = `
                         <div class="card">
-                            <h3 style="color: #00d9ff; margin-bottom: 15px;">Decrypted Record:</h3>
+                            <h3 style="color: #00d9ff; margin-bottom: 15px;">Decrypted Record (ID: ${violationId}):</h3>
                             <pre>${JSON.stringify(data.plaintext, null, 2)}</pre>
                         </div>`;
                 } else {
-                    container.innerHTML = `<div class="card"><pre style="color: #ff6b6b;">Decryption failed</pre></div>`;
+                    container.innerHTML = `<div class="card"><pre style="color: #ff6b6b;">Decryption failed: ${data.error || 'Unknown error'}</pre></div>`;
                 }
             } catch (err) {
                 showMessage('Decryption failed', true);
             }
         }
+
+        // Event delegation for decrypt buttons
+        document.getElementById('driversContainer').addEventListener('click', (e) => {
+            if (e.target.classList.contains('decrypt-btn')) {
+                const violationId = parseInt(e.target.dataset.id);
+                decryptRecord(violationId);
+            }
+        });
 
         // Register driver
         document.getElementById('driverForm').addEventListener('submit', async (e) => {
